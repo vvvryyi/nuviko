@@ -4,8 +4,8 @@ const fs=require('node:fs');
 const storage=new Map([['nuviko_demo_v1',JSON.stringify({email:'test@example.invalid'})]]);
 function boot(windowOptions={},fullscreenRequest){
   let now=100000, tick, click, observer; const reports=[];
-  const classes=new Set();
-  const root={classList:{add:c=>classes.add(c),remove:c=>classes.delete(c),toggle:(c,v)=>v?classes.add(c):classes.delete(c)},innerHTML:'',addEventListener:(type,fn)=>{if(type==='click')click=fn}};
+  const classes=new Set(),handlers={};
+  const root={classList:{add:c=>classes.add(c),remove:c=>classes.delete(c),toggle:(c,v)=>v?classes.add(c):classes.delete(c)},innerHTML:'',addEventListener:(type,fn)=>{handlers[type]=fn;if(type==='click')click=fn}};
   if(fullscreenRequest)root.requestFullscreen=fullscreenRequest;
   const view={classList:{contains:()=>true}};
   const doc={hidden:false,getElementById:id=>id==='workout-app'?root:id==='workouts'?view:null,addEventListener(){},querySelector:()=>({click(){}})};
@@ -16,7 +16,7 @@ function boot(windowOptions={},fullscreenRequest){
   vm.runInNewContext(fs.readFileSync(__dirname+'/real-coach.js','utf8'),sandbox);
   vm.runInNewContext(fs.readFileSync(__dirname+'/posture-coach.js','utf8'),sandbox);
   vm.runInNewContext(fs.readFileSync(__dirname+'/workouts.js','utf8'),sandbox);
-  return {classes,tap:()=>click({target:{closest:()=>null}}),reports,html:()=>root.innerHTML,select:id=>click({target:{closest:()=>({dataset:{select:id}})}}),action:name=>click({target:{closest:()=>({dataset:{action:name}})}}),advance:seconds=>{now+=seconds*1000;tick()},doc,observer};
+  return {classes,tap:()=>click({target:{closest:selector=>selector==='.wk-video-viewport'?{}:null}}),touch:(type,points)=>handlers[type]({target:{closest:()=>({})},touches:points.map(x=>({clientX:x,clientY:0})),preventDefault(){}}),reports,html:()=>root.innerHTML,select:id=>click({target:{closest:()=>({dataset:{select:id}})}}),action:name=>click({target:{closest:()=>({dataset:{action:name}})}}),advance:seconds=>{now+=seconds*1000;tick()},doc,observer};
 }
 
 let app=boot();
@@ -39,7 +39,7 @@ for(const [id,count] of [['face',16],['eyes',6],['back',12]]){
 assert.ok(app.html().includes('✓ 3/3'));
 app.select('face');app.action('restart');app.action('pause');
 const tag=app.html().match(/<video[^>]+>/)[0];assert.ok(!/\scontrols(?:\s|=|>)/.test(tag));
-app.action('video-zoom');assert.ok(app.html().includes('wk-video-viewport is-zoomed'));
+assert.ok(!app.html().includes('video-zoom'));
 app.action('video-mute');assert.ok(app.html().includes('Выключить звук'));
 for(let i=0;i<16;i++)app.action('skip');assert.ok(app.html().includes('ЧАСТИЧНОЕ ПРОХОЖДЕНИЕ'));
 assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.count,1);
@@ -60,7 +60,7 @@ app=boot();assert.ok(app.html().includes('eyes-cover.jpg'));assert.ok(app.html()
 for(const id of ['eyes','back']){
   app=boot();app.select(id);app.action('restart');app.action('pause');
   assert.ok(app.html().includes('assets/'+id+'-workout.mp4'));
-  app.action('video-zoom');assert.ok(app.html().includes('is-zoomed'));
+  assert.ok(!app.html().includes('video-zoom'));
   app.action('video-mute');assert.ok(app.html().includes('Выключить звук'));
   app.action('catalog');
 }
@@ -90,10 +90,19 @@ const mobileHUD=boot({matchMedia:()=>({matches:true})});mobileHUD.select('face')
 assert.ok(mobileHUD.classes.has('wk-hud-hidden'));
 mobileHUD.tap();assert.ok(!mobileHUD.classes.has('wk-hud-hidden'));
 mobileHUD.advance(4);assert.ok(!mobileHUD.classes.has('wk-hud-hidden'));
-mobileHUD.tap();mobileHUD.advance(4);assert.ok(!mobileHUD.classes.has('wk-hud-hidden'));
+mobileHUD.action('video-mute');mobileHUD.advance(4);assert.ok(!mobileHUD.classes.has('wk-hud-hidden'));
 mobileHUD.advance(1);assert.ok(mobileHUD.classes.has('wk-hud-hidden'));
 mobileHUD.advance(21);assert.ok(!mobileHUD.classes.has('wk-hud-hidden'));assert.ok(mobileHUD.html().includes('wk-fs-next'));
 mobileHUD.advance(5);assert.ok(mobileHUD.classes.has('wk-hud-hidden'));
 mobileHUD.tap();assert.ok(!mobileHUD.classes.has('wk-hud-hidden'));
 mobileHUD.action('video-fullscreen-exit');assert.ok(!mobileHUD.classes.has('wk-hud-hidden'));
 console.log('Passed: mobile HUD hidden on entry, tap to reveal, exact 5-second timeout, activity reset, completion prompt reveal, hiding while stopped and cleanup on exit.');
+
+const pinch=boot({matchMedia:()=>({matches:true})});pinch.select('eyes');pinch.action('restart');pinch.action('video-fullscreen');
+pinch.tap();assert.ok(!pinch.classes.has('wk-hud-hidden'));pinch.tap();assert.ok(pinch.classes.has('wk-hud-hidden'));
+pinch.touch('touchstart',[0,100]);pinch.touch('touchmove',[0,150]);assert.ok(pinch.classes.has('wk-video-filled'));
+pinch.touch('touchend',[]);pinch.tap();assert.ok(pinch.classes.has('wk-hud-hidden'));
+pinch.advance(1);pinch.touch('touchstart',[0,150]);pinch.touch('touchmove',[0,90]);assert.ok(!pinch.classes.has('wk-video-filled'));
+pinch.touch('touchend',[]);pinch.advance(1);pinch.tap();assert.ok(!pinch.classes.has('wk-hud-hidden'));
+pinch.action('video-mute');assert.ok(!pinch.classes.has('wk-hud-hidden'));
+console.log('Passed: pinch fill/fit, no zoom button, gesture does not trigger taps, video tap toggles HUD, control taps keep HUD visible.');
