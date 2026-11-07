@@ -5,8 +5,8 @@ const html=fs.readFileSync(__dirname+'/index.html','utf8');
 const source=html.slice(html.indexOf('function go('),html.indexOf("document.querySelectorAll('[data-go]')"));
 function boot(user,hash){
   const active=new Set(),changes=[];
-  const context={user,location:{hash},views:['home','auth','dashboard','upload','result','pricing','workouts','nutrition','assistant','daily'],pendingUpload:false,
-    $:id=>({classList:{toggle:(_,on)=>on?active.add(id):active.delete(id)}}),render(){},document:{querySelectorAll:()=>[]},window:{scrollTo(){}},
+  const context={window:{NuvikoAccounts:{isAdmin:u=>u?.role==='admin'}},user,location:{hash},views:['home','auth','dashboard','upload','result','pricing','workouts','nutrition','assistant','daily'],pendingUpload:false,
+    $:id=>({classList:{toggle:(_,on)=>on?active.add(id):active.delete(id)}}),render(){},document:{querySelectorAll:()=>[]},window:{scrollTo(){},NuvikoAccounts:{isAdmin:u=>u?.role==='admin'}},
     history:{pushState(_,__,hash){context.location.hash=hash;changes.push('push')},replaceState(_,__,hash){context.location.hash=hash;changes.push('replace')}}};
   vm.createContext(context);vm.runInContext(source,context);
   return {context,active,changes,go:(view,history=false)=>context.go(view,history)};
@@ -26,3 +26,6 @@ app.context.user=null;app.go('home');assert.deepEqual([...app.active],['home']);
 app.go('result',true);assert.deepEqual([...app.active],['home']);
 app.go('auth');assert.deepEqual([...app.active],['auth']);
 console.log('Passed: logged-in landing/auth redirect, canonical bookmark/history URL, logo navigation, guest access, login/logout transitions and result access.');
+
+const regular=boot({email:'user@example.invalid'},'#admin');regular.context.views.push('admin');regular.go('admin',true);assert.deepEqual([...regular.active],['dashboard']);
+const admin=boot({email:'admin@example.invalid',role:'admin'},'#admin');admin.context.views.push('admin');admin.go('admin',true);assert.deepEqual([...admin.active],['admin']);

@@ -1,0 +1,21 @@
+const assert=require('node:assert/strict'),vm=require('node:vm'),fs=require('node:fs'),{webcrypto:crypto}=require('node:crypto');
+const storage=new Map(),window={};
+vm.runInNewContext(fs.readFileSync(__dirname+'/accounts.js','utf8'),{window,crypto,TextEncoder,Uint8Array,document:{getElementById:()=>null},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)}});
+(async()=>{
+ const api=window.NuvikoAccounts;
+ const user=await api.authenticate('test@example.invalid','test-password-123',true);
+ assert.equal(user.role,'user');assert.equal(user.passwordHash,undefined);assert.ok(!storage.get('nuviko_accounts_v1').includes('test-password-123'));
+ await assert.rejects(api.authenticate(user.email,'wrong-password',false));
+ assert.equal((await api.authenticate(user.email,'test-password-123',false)).email,user.email);
+ await assert.rejects(api.authenticate(user.email,'test-password-123',true));
+ const salt='00112233445566778899001122334455';const material=await crypto.subtle.importKey('raw',new TextEncoder().encode('private-admin-test'),'PBKDF2',false,['deriveBits']);
+ const passwordHash=Buffer.from(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',iterations:210000,salt:Buffer.from(salt,'hex')},material,256)).toString('hex');
+ const data={format:'nuviko-local-account-v1',email:'owner@example.invalid',role:'admin',salt,passwordHash};
+ const file={size:500,text:async()=>JSON.stringify(data)};
+ await assert.rejects(api.importAccount(file,'wrong-password'));assert.equal(api.isAdmin({email:data.email,role:'admin'}),false);
+ const admin=await api.importAccount(file,'private-admin-test');assert.equal(api.isAdmin(admin),true);assert.equal(api.isAdmin(user),false);
+ await assert.rejects(api.importAccount(file,'private-admin-test'));
+ assert.equal(Object.keys(JSON.parse(storage.get('nuviko_accounts_v1'))).length,2);
+ api.sync({...user,credits:0,used:1});assert.equal(JSON.parse(storage.get('nuviko_accounts_v1'))[user.email].used,1);
+ console.log('Passed: local password hashing, wrong-password rejection, registration/login, private admin import, duplicate rejection, roles and multiple local accounts.');
+})().catch(e=>{console.error(e);process.exitCode=1});
