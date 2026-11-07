@@ -17,11 +17,12 @@ for(const route of ['home','auth','invalid']){
 }
 for(const route of ['workouts','daily','nutrition','assistant']){
   const logged=boot({email:'demo@example.invalid'},'#'+route);logged.go(route,true);assert.deepEqual([...logged.active],[route]);
-  const guest=boot(null,'#'+route);guest.go(route,true);assert.deepEqual([...guest.active],['auth']);assert.equal(guest.context.location.hash,'#auth');
+  const guest=boot(null,'#'+route);guest.go(route,true);assert.deepEqual([...guest.active],['home']);assert.equal(guest.context.location.hash,'#home');
 }
 const app=boot(null,'#home');app.go('home',true);assert.deepEqual([...app.active],['home']);
 app.context.user={email:'demo@example.invalid'};app.go('home');assert.deepEqual([...app.active],['dashboard']);
 app.go('auth');assert.deepEqual([...app.active],['dashboard']);
 app.context.user=null;app.go('home');assert.deepEqual([...app.active],['home']);
-app.go('result',true);assert.deepEqual([...app.active],['auth']);
+app.go('result',true);assert.deepEqual([...app.active],['home']);
+app.go('auth');assert.deepEqual([...app.active],['auth']);
 console.log('Passed: logged-in landing/auth redirect, canonical bookmark/history URL, logo navigation, guest access, login/logout transitions and result access.');
