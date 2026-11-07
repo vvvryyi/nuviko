@@ -115,7 +115,7 @@ exercise('Дыхание и завершение',15,'Со спокойным в
       html+=`<div class="wk-complete"><div class="wk-medal">${skipped?'✦':'✓'}</div><span class="wk-label">ТВОЁ ВРЕМЯ ДЛЯ СЕБЯ</span><h1>${skipped?'Практика завершена':'Ты справился. Отличный ритм!'}</h1><p class="muted">«${selected.name}»<br>${skipped?'Ты выбрал свой темп. К пропущенным упражнениям можно вернуться в новом прохождении.':'Все упражнения выполнены. Можно расслабиться!'}</p><div class="wk-facts" style="justify-content:center"><div><strong>${done} / ${selected.steps.length}</strong><small>выполнено</small></div><div><strong>${skipped}</strong><small>пропущено</small></div><div><strong>${record().count||0}</strong><small>полных прохождений</small></div></div><span class="wk-badge ${skipped?'':'done'}">${skipped?'↠ ЧАСТИЧНОЕ ПРОХОЖДЕНИЕ':'✓ ПРОЙДЕНО ПОЛНОСТЬЮ'}</span><div class="wk-outline">${selected.steps.map((step,i)=>`<div class="wk-step ${results[i]==='done'?'done':'skipped'}"><span>${results[i]==='done'?'✓':'↠'}</span><strong>${step.name}</strong><small>${results[i]==='done'?'Выполнено':'Пропущено'}</small></div>`).join('')}</div><div class="wk-controls"><button class="btn btn-primary" data-action="catalog">К программам →</button><button class="btn btn-ghost" data-action="restart">Повторить</button></div>${storageFailed?'<p class="note">Хранилище недоступно: результат сохранится только до закрытия страницы.</p>':''}</div>`;
     }
     if(screen==='player')html+=fullscreenHUD();else if(fullscreen)exitFullscreen();
-    root.innerHTML=html;
+    root.innerHTML=screen==='player'?`<div class="wk-fs-surface">${html}</div>`:html;
     window.NuvikoCoach.mount(root);
     if(screen==='player')mountVideo();
   }
