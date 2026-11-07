@@ -2,13 +2,14 @@ const {strict:assert}=require('node:assert');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const storage=new Map([['nuviko_demo_v1',JSON.stringify({email:'test@example.invalid'})]]);
-function boot(){
+function boot(windowOptions={},fullscreenRequest){
   let now=100000, tick, click, observer; const reports=[];
   const root={innerHTML:'',addEventListener:(type,fn)=>{if(type==='click')click=fn}};
+  if(fullscreenRequest)root.requestFullscreen=fullscreenRequest;
   const view={classList:{contains:()=>true}};
   const doc={hidden:false,getElementById:id=>id==='workout-app'?root:id==='workouts'?view:null,addEventListener(){},querySelector:()=>({click(){}})};
   class Clock extends Date {static now(){return now}}
-  const sandbox={Image:class{},document:doc,Date:Clock,localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},setInterval:fn=>{tick=fn},MutationObserver:class{constructor(fn){observer=fn}observe(){}},window:{NuvikoDaily:{workout:r=>reports.push(r),sound(){},music(){}},scrollTo(){},addEventListener(){}}};
+  const sandbox={Image:class{},document:doc,Date:Clock,localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},setInterval:fn=>{tick=fn},MutationObserver:class{constructor(fn){observer=fn}observe(){}},window:{NuvikoDaily:{workout:r=>reports.push(r),sound(){},music(){}},scrollTo(){},addEventListener(){},...windowOptions}};
   vm.runInNewContext(fs.readFileSync(__dirname+'/coach.js','utf8'),sandbox);
   vm.runInNewContext(fs.readFileSync(__dirname+'/greek-coach.js','utf8'),sandbox);
   vm.runInNewContext(fs.readFileSync(__dirname+'/real-coach.js','utf8'),sandbox);
@@ -71,3 +72,15 @@ app.action('next');assert.ok(app.html().includes('Этап 2 из 6'));assert.ok
 for(let i=1;i<6;i++){app.advance(40);if(i<5)app.action('next')}
 assert.ok(app.html().includes('Сохрани результат своего занятия.'));app.action('next');assert.ok(app.html().includes('Ты справился'));
 console.log('Passed: fullscreen controls, completion prompt, next exercise, final completion and preserved progression.');
+
+(async()=>{
+  let requested=0,locked=0,unlocked=0;
+  const mobile={matchMedia:()=>({matches:true}),screen:{orientation:{lock:async value=>{assert.equal(value,'landscape');locked++},unlock:()=>unlocked++}}};
+  const phone=boot(mobile,async()=>{requested++});phone.select('face');phone.action('restart');phone.action('video-fullscreen');
+  await new Promise(resolve=>setImmediate(resolve));assert.equal(requested,1);assert.equal(locked,1);
+  phone.action('video-fullscreen-exit');assert.equal(unlocked,1);
+  const desktop=boot({...mobile,matchMedia:()=>({matches:false})});desktop.select('eyes');desktop.action('restart');desktop.action('video-fullscreen');await new Promise(resolve=>setImmediate(resolve));assert.equal(locked,1);
+  const denied=boot({...mobile,screen:{orientation:{lock:async()=>{throw Error('not supported')},unlock(){}}}},()=>Promise.reject(Error('fullscreen unavailable')));
+  denied.select('back');denied.action('restart');denied.action('video-fullscreen');await new Promise(resolve=>setImmediate(resolve));denied.advance(30);assert.ok(denied.html().includes('wk-fs-next'));denied.action('video-fullscreen-exit');
+  console.log('Passed: mobile landscape request after fullscreen, orientation unlock on exit, desktop unchanged and rejected fullscreen fallback.');
+})().catch(e=>{console.error(e);process.exitCode=1});

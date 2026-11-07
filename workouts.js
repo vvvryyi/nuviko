@@ -68,15 +68,24 @@ exercise('Дыхание и завершение',15,'Со спокойным в
   const tip=()=>`<div class="wk-note">Двигайся мягко. При боли, головокружении или дискомфорте остановись. ${selected?.id==='eyes'?'При проблемах с глазами обсуди упражнения с офтальмологом. ':''}Следуй текстовой инструкции и выбирай комфортную амплитуду.<br>Материалы: <a href="https://www.nhs.uk/live-well/exercise/sitting-exercises/" target="_blank" rel="noopener">разминка NHS</a> · <a href="https://www.aao.org/eye-health/tips-prevention/computer-usage" target="_blank" rel="noopener">отдых от экрана, AAO</a>${storageFailed?'<br>Не удалось сохранить прогресс. Проверь доступность хранилища браузера.':''}</div>`;
   const top=()=>`<div class="wk-top"><button class="back-link" data-action="${screen==='catalog'?'dashboard':'catalog'}">← ${screen==='catalog'?'В кабинет':'Все программы'}</button><span class="wk-stat"><b>✓ ${programs.filter(p=>records()[p.id]?.count).length}/3</b> программ пройдено</span></div>`;
   let videoZoom=false,videoMuted=true;
-  let fullscreen=false;
+  let fullscreen=false,orientationLocked=false;
+  const mobileFullscreen=()=>window.matchMedia?.('(pointer: coarse)').matches;
+  async function lockLandscape(){
+    if(!fullscreen||!mobileFullscreen()||!window.screen?.orientation?.lock)return;
+    try{
+      await window.screen.orientation.lock('landscape');
+      if(fullscreen)orientationLocked=true;else window.screen.orientation.unlock();
+    }catch{} // Portrait phones use the rotated CSS layout when orientation locking is unavailable.
+  }
   function exitFullscreen(){
+    if(orientationLocked){try{window.screen.orientation.unlock()}catch{}orientationLocked=false}
     fullscreen=false;root.classList?.remove('wk-fullscreen');document.body?.classList.remove('wk-fullscreen-open');
     if(document.fullscreenElement===root)document.exitFullscreen?.().catch(()=>{});
   }
   function openFullscreen(){
     if(screen!=='player')return;
     fullscreen=true;root.classList?.add('wk-fullscreen');document.body?.classList.add('wk-fullscreen-open');
-    if(root.requestFullscreen)root.requestFullscreen().catch(()=>{});
+    if(root.requestFullscreen){try{Promise.resolve(root.requestFullscreen()).then(lockLandscape).catch(()=>{})}catch{}}else lockLandscape();
   }
   document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&fullscreen)exitFullscreen()});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&fullscreen)exitFullscreen()});
