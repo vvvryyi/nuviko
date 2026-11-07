@@ -15,7 +15,10 @@ vm.runInNewContext(fs.readFileSync(__dirname+'/accounts.js','utf8'),{window,cryp
  await assert.rejects(api.importAccount(file,'wrong-password'));assert.equal(api.isAdmin({email:data.email,role:'admin'}),false);
  const admin=await api.importAccount(file,'private-admin-test');assert.equal(api.isAdmin(admin),true);assert.equal(api.isAdmin(user),false);
  await assert.rejects(api.importAccount(file,'private-admin-test'));
- assert.equal(Object.keys(JSON.parse(storage.get('nuviko_accounts_v1'))).length,2);
+ const second=await api.authenticate('second@example.invalid','second-test-password',true);assert.equal(second.email,'second@example.invalid');
+ assert.equal((await api.authenticate(user.email,'test-password-123',false)).email,user.email);
+ await assert.rejects(api.authenticate(second.email,'test-password-123',false));
+ assert.equal(Object.keys(JSON.parse(storage.get('nuviko_accounts_v1'))).length,3);
  api.sync({...user,credits:0,used:1});assert.equal(JSON.parse(storage.get('nuviko_accounts_v1'))[user.email].used,1);
  console.log('Passed: local password hashing, wrong-password rejection, registration/login, private admin import, duplicate rejection, roles and multiple local accounts.');
 })().catch(e=>{console.error(e);process.exitCode=1});
