@@ -63,3 +63,11 @@ for(const id of ['eyes','back']){
   app.action('catalog');
 }
 console.log('Passed: three video covers, eyes/back sources and right-panel zoom/mute controls.');
+
+app=boot();app.select('eyes');app.action('restart');app.action('video-fullscreen');
+assert.ok(app.html().includes('video-fullscreen-exit'));assert.ok(!app.html().includes('wk-fs-next'));
+app.advance(40);assert.ok(app.html().includes('wk-fs-next'));assert.ok(app.html().includes('Готов к следующему шагу?'));
+app.action('next');assert.ok(app.html().includes('Этап 2 из 6'));assert.ok(!app.html().includes('wk-fs-next'));
+for(let i=1;i<6;i++){app.advance(40);if(i<5)app.action('next')}
+assert.ok(app.html().includes('Сохрани результат своего занятия.'));app.action('next');assert.ok(app.html().includes('Ты справился'));
+console.log('Passed: fullscreen controls, completion prompt, next exercise, final completion and preserved progression.');
