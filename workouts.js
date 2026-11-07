@@ -68,7 +68,15 @@ exercise('Дыхание и завершение',15,'Со спокойным в
   const tip=()=>`<div class="wk-note">Двигайся мягко. При боли, головокружении или дискомфорте остановись. ${selected?.id==='eyes'?'При проблемах с глазами обсуди упражнения с офтальмологом. ':''}Следуй текстовой инструкции и выбирай комфортную амплитуду.<br>Материалы: <a href="https://www.nhs.uk/live-well/exercise/sitting-exercises/" target="_blank" rel="noopener">разминка NHS</a> · <a href="https://www.aao.org/eye-health/tips-prevention/computer-usage" target="_blank" rel="noopener">отдых от экрана, AAO</a>${storageFailed?'<br>Не удалось сохранить прогресс. Проверь доступность хранилища браузера.':''}</div>`;
   const top=()=>`<div class="wk-top"><button class="back-link" data-action="${screen==='catalog'?'dashboard':'catalog'}">← ${screen==='catalog'?'В кабинет':'Все программы'}</button><span class="wk-stat"><b>✓ ${programs.filter(p=>records()[p.id]?.count).length}/3</b> программ пройдено</span></div>`;
   let videoZoom=false,videoMuted=true;
-  let fullscreen=false,orientationLocked=false;
+  let fullscreen=false,orientationLocked=false,hudHidden=false,hudHideAt=0;
+  function setHUDHidden(hidden){
+    hudHidden=hidden;root.classList?.toggle('wk-hud-hidden',hidden);
+    root.querySelectorAll?.('.wk-fs-top,.wk-fs-bottom').forEach(el=>{el.inert=hidden});
+  }
+  function revealHUD(){
+    if(!fullscreen||!mobileFullscreen())return;
+    setHUDHidden(false);hudHideAt=Date.now()+5000;
+  }
   const mobileFullscreen=()=>window.matchMedia?.('(pointer: coarse)').matches;
   async function lockLandscape(){
     if(!fullscreen||!mobileFullscreen()||!window.screen?.orientation?.lock)return;
@@ -79,12 +87,14 @@ exercise('Дыхание и завершение',15,'Со спокойным в
   }
   function exitFullscreen(){
     if(orientationLocked){try{window.screen.orientation.unlock()}catch{}orientationLocked=false}
+    setHUDHidden(false);hudHideAt=0;
     fullscreen=false;root.classList?.remove('wk-fullscreen');document.body?.classList.remove('wk-fullscreen-open');
     if(document.fullscreenElement===root)document.exitFullscreen?.().catch(()=>{});
   }
   function openFullscreen(){
     if(screen!=='player')return;
     fullscreen=true;root.classList?.add('wk-fullscreen');document.body?.classList.add('wk-fullscreen-open');
+    if(mobileFullscreen())setHUDHidden(true);
     if(root.requestFullscreen){try{Promise.resolve(root.requestFullscreen()).then(lockLandscape).catch(()=>{})}catch{}}else lockLandscape();
   }
   document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&fullscreen)exitFullscreen()});
@@ -117,7 +127,7 @@ exercise('Дыхание и завершение',15,'Со спокойным в
     if(screen==='player')html+=fullscreenHUD();else if(fullscreen)exitFullscreen();
     root.innerHTML=screen==='player'?`<div class="wk-fs-surface">${html}</div>`:html;
     window.NuvikoCoach.mount(root);
-    if(screen==='player')mountVideo();
+    if(screen==='player'){mountVideo();setHUDHidden(hudHidden)}
   }
   let attemptId='', trackedAt=0;
   function report(ms=0,complete=false){
@@ -180,8 +190,9 @@ exercise('Дыхание и завершение',15,'Со спокойным в
     pause();if(name==='dashboard'){document.querySelector('[data-go="dashboard"]').click();return}screen=name;render();window.scrollTo({top:0,behavior:'smooth'});
   }
   root.addEventListener('contextmenu',e=>{if(e.target.closest('.wk-video-viewport'))e.preventDefault()});
-  root.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.select){selected=programs.find(p=>p.id===b.dataset.select);screen='detail';render();window.scrollTo({top:0,behavior:'smooth'})}else if(b.dataset.action)action(b.dataset.action)});
-  setInterval(()=>{if(!running||screen!=='player')return;track();const next=Math.max(0,Math.ceil((deadline-Date.now())/1000));if(next!==remaining){remaining=next;if(remaining>0&&remaining<=3)window.NuvikoDaily?.sound('count');checkpoint();const el=document.getElementById('wk-clock');if(el)el.textContent=clock(remaining);const fsClock=document.getElementById('wk-fs-clock');if(fsClock)fsClock.textContent=clock(remaining);if(remaining===0){running=false;report();audio();window.NuvikoDaily?.sound('finish');render()}}},200);
+  root.addEventListener('click',e=>{if(fullscreen&&mobileFullscreen()){const wasHidden=hudHidden;revealHUD();if(wasHidden)return}const b=e.target.closest('button');if(!b)return;if(b.dataset.select){selected=programs.find(p=>p.id===b.dataset.select);screen='detail';render();window.scrollTo({top:0,behavior:'smooth'})}else if(b.dataset.action)action(b.dataset.action)});
+  root.addEventListener('focusin',revealHUD);
+  setInterval(()=>{if(fullscreen&&mobileFullscreen()&&!hudHidden&&Date.now()>=hudHideAt)setHUDHidden(true);if(!running||screen!=='player')return;track();const next=Math.max(0,Math.ceil((deadline-Date.now())/1000));if(next!==remaining){remaining=next;if(remaining>0&&remaining<=3)window.NuvikoDaily?.sound('count');checkpoint();const el=document.getElementById('wk-clock');if(el)el.textContent=clock(remaining);const fsClock=document.getElementById('wk-fs-clock');if(fsClock)fsClock.textContent=clock(remaining);if(remaining===0){running=false;report();audio();window.NuvikoDaily?.sound('finish');render();revealHUD()}}},200);
   new MutationObserver(()=>{if(!document.getElementById('workouts').classList.contains('active')){if(fullscreen)exitFullscreen();if(running){pause();render()}}else if(owner!==account()){pause();owner=account();selected=null;screen='catalog';render()}}).observe(document.getElementById('workouts'),{attributes:true,attributeFilter:['class']});
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){pause();render()}});
   window.addEventListener('pagehide',pause);
