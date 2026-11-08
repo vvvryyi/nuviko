@@ -62,12 +62,29 @@ exercise('Дыхание и завершение',15,'Со спокойным в
   const eyeSourceTimes=[5,55,105,155,205,255];
   const backSourceTimes=[8,37,63,111,158,205,252,297,344,391,414,437];
   const media={face:{file:'face-workout.mp4',cover:'face-cover.jpg',times:sourceTimes},eyes:{file:'eyes-workout.mp4',cover:'eyes-cover.jpg',times:eyeSourceTimes},back:{file:'back-workout.mp4',cover:'back-cover.jpg',times:backSourceTimes}};
+  for(const p of programs)p.steps.forEach((step,i)=>{const times=media[p.id].times;if(times[i+1])step.seconds=Math.min(step.seconds,times[i+1]-times[i])});
   const cover=p=>`<div class="wk-cover"><img src="assets/${media[p.id].cover}" alt="${p.name} — кадр из видео тренировки" loading="lazy"/><span>▶ ВИДЕОТРЕНИРОВКА</span></div>`;
   const sourceLink=i=>{const back=selected?.id==='back',eye=selected?.id==='eyes';return `<a class="wk-source" href="https://www.youtube.com/watch?v=${back?'5mOpoYnXxpE':eye?'q7VMzvxWKsc':'T-W1o7AOEUg'}&t=${(back?backSourceTimes:eye?eyeSourceTimes:sourceTimes)[i]||0}s" target="_blank" rel="noopener">↗ Техника в оригинальном видео</a>`};
   const art=type=>window.NuvikoCoach.markup(type);
   const tip=()=>`<div class="wk-note">Двигайся мягко. При боли, головокружении или дискомфорте остановись. ${selected?.id==='eyes'?'При проблемах с глазами обсуди упражнения с офтальмологом. ':''}Следуй текстовой инструкции и выбирай комфортную амплитуду.<br>Материалы: <a href="https://www.nhs.uk/live-well/exercise/sitting-exercises/" target="_blank" rel="noopener">разминка NHS</a> · <a href="https://www.aao.org/eye-health/tips-prevention/computer-usage" target="_blank" rel="noopener">отдых от экрана, AAO</a>${storageFailed?'<br>Не удалось сохранить прогресс. Проверь доступность хранилища браузера.':''}</div>`;
   const top=()=>`<div class="wk-top"><button class="back-link" data-action="${screen==='catalog'?'dashboard':'catalog'}">← ${screen==='catalog'?'В кабинет':'Все программы'}</button><span class="wk-stat"><b>✓ ${programs.filter(p=>records()[p.id]?.count).length}/3</b> программ пройдено</span></div>`;
-  let videoFilled=false,videoMuted=true;
+  let videoFilled=false,videoMuted=true,playedSeconds=0,lastVideoTime=null,autoAt=0,autoNext=false;
+  try{autoNext=localStorage.getItem('nuviko_auto_next')==='1'}catch{}
+  const autoControl=()=>`<button class="btn btn-ghost btn-small wk-auto ${autoNext?'enabled':''}" data-action="auto-next" aria-pressed="${autoNext}"><span class="wk-auto-dot"></span>Автопереход ${autoNext?'вкл.':'выкл.'}</button>`;
+  function paintClock(){for(const id of ['wk-clock','wk-fs-clock']){const el=document.getElementById(id);if(el)el.textContent=clock(remaining)}}
+  function finishStage(){
+    if(!running)return;running=false;remaining=0;autoAt=autoNext?Date.now()+900:0;checkpoint();report();audio();window.NuvikoDaily?.sound('finish');render();revealHUD();
+  }
+  function sampleVideo(video){
+    if(!running||video.seeking||video.readyState<2)return;
+    const from=media[selected.id].times[index],seconds=stages(selected)[index].seconds;
+    const position=Math.min(seconds,Math.max(0,video.currentTime-from));
+    if(lastVideoTime!==null&&position>=lastVideoTime)report((position-lastVideoTime)*1000);
+    lastVideoTime=position;playedSeconds=position;
+    const next=Math.max(0,Math.ceil(seconds-position));
+    if(next!==remaining){remaining=next;if(next>0&&next<=3)window.NuvikoDaily?.sound('count');paintClock();checkpoint()}
+    if(position>=seconds-.04)finishStage();
+  }
   let fullscreen=false,orientationLocked=false,hudHidden=false,hudHideAt=0;
   function setHUDHidden(hidden){
     hudHidden=hidden;root.classList?.toggle('wk-hud-hidden',hidden);
@@ -100,15 +117,16 @@ exercise('Дыхание и завершение',15,'Со спокойным в
   }
   document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&fullscreen)exitFullscreen()});
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&fullscreen)exitFullscreen()});
-  const fullscreenHUD=()=>`<div class="wk-fs-top"><div><span class="wk-label">${selected.name} · ${index+1} / ${selected.steps.length}</span><h2>${stages(selected)[index].name}</h2></div><button class="btn btn-ghost btn-small" data-action="video-fullscreen-exit" aria-label="Выйти из полного экрана">✕ Закрыть</button></div><div class="wk-fs-bottom">${remaining===0?`<div class="wk-fs-next" role="status"><span class="wk-fs-check">✓</span><div><span class="wk-label">ЭТАП ЗАВЕРШЁН</span><h3>${stages(selected)[index+1]?'Готов к следующему шагу?':'Ты справился с тренировкой!'}</h3><p>${stages(selected)[index+1]?.name||'Сохрани результат своего занятия.'}</p></div><button class="btn btn-primary" data-action="next">${stages(selected)[index+1]?'Следующий этап →':'Завершить тренировку ✓'}</button></div>`:''}<div class="wk-fs-toolbar"><span class="wk-fs-clock" id="wk-fs-clock">${clock(remaining)}</span>${remaining>0?`<button class="btn btn-ghost btn-small" data-action="pause">${running?'Ⅱ Пауза':'▶ Продолжить'}</button>`:''}<button class="btn btn-ghost btn-small" data-action="video-mute" aria-pressed="${videoMuted}">${videoMuted?'Включить звук':'Выключить звук'}</button></div></div>`;
+  const fullscreenHUD=()=>`<div class="wk-fs-top"><div><span class="wk-label">${selected.name} · ${index+1} / ${selected.steps.length}</span><h2>${stages(selected)[index].name}</h2></div><button class="btn btn-ghost btn-small" data-action="video-fullscreen-exit" aria-label="Выйти из полного экрана">✕ Закрыть</button></div><div class="wk-fs-bottom">${remaining===0?`<div class="wk-fs-next" role="status"><span class="wk-fs-check">✓</span><div><span class="wk-label">ЭТАП ЗАВЕРШЁН</span><h3>${stages(selected)[index+1]?'Готов к следующему шагу?':'Ты справился с тренировкой!'}</h3><p>${stages(selected)[index+1]?.name||'Сохрани результат своего занятия.'}</p></div><button class="btn btn-primary" data-action="next">${stages(selected)[index+1]?'Следующий этап →':'Завершить тренировку ✓'}</button>${autoControl()}</div>`:''}<div class="wk-fs-toolbar">${autoControl()}<span class="wk-fs-clock" id="wk-fs-clock">${clock(remaining)}</span>${remaining>0?`<button class="btn btn-ghost btn-small" data-action="pause">${running?'Ⅱ Пауза':'▶ Продолжить'}</button>`:''}<button class="btn btn-ghost btn-small" data-action="video-mute" aria-pressed="${videoMuted}">${videoMuted?'Включить звук':'Выключить звук'}</button></div></div>`;
   function mountVideo(){
     const video=root.querySelector?.('#wk-training-video');if(!video)return;
     video.muted=videoMuted;video.disablePictureInPicture=true;video.disableRemotePlayback=true;
     video.addEventListener('contextmenu',e=>e.preventDefault());
-    const step=stages(selected)[index],from=media[selected.id].times[index]||0;
-    const seek=()=>{video.currentTime=Math.min(from+step.seconds-remaining,Math.max(0,video.duration-.1));if(running)video.play().catch(()=>{const help=root.querySelector('#wk-video-help');if(help)help.textContent='Для запуска видео нажми «Пауза», затем «Продолжить» на панели справа.'})};
+    const step=stages(selected)[index],from=media[selected.id].times[index]||0;lastVideoTime=playedSeconds;
+    const seek=()=>{video.currentTime=Math.min(from+Math.min(playedSeconds,Math.max(0,step.seconds-.06)),Math.max(0,video.duration-.1));if(running)video.play().catch(()=>{const help=root.querySelector('#wk-video-help');if(help)help.textContent='Для запуска видео нажми «Пауза», затем «Продолжить» на панели справа.'})};
     video.addEventListener('loadedmetadata',seek,{once:true});if(video.readyState>=1)seek();
-    video.addEventListener('timeupdate',()=>{if(video.currentTime>=from+step.seconds||video.currentTime<from-.5)video.currentTime=from});
+    video.addEventListener('timeupdate',()=>sampleVideo(video));
+    video.addEventListener('ended',()=>{sampleVideo(video);if(running)finishStage()});
     video.addEventListener('error',()=>{const help=root.querySelector('#wk-video-help');if(help)help.textContent='Видео не загрузилось. Проверь соединение и открой тренировку снова.'});
   }
   function render(){
@@ -119,12 +137,13 @@ exercise('Дыхание и завершение',15,'Со спокойным в
     else if(screen==='player'){
       const list=stages(selected), s=list[index], ready=remaining===0;
       const videoActive=true;
-      html+=`<span class="wk-label">${selected.name} / УПРАЖНЕНИЕ ${index+1} ИЗ ${selected.steps.length}</span><div class="wk-progress"><span style="width:${index/list.length*100}%"></span></div><div class="wk-progress-label"><span>Этап ${index+1} из ${list.length}</span><span>Твой комфортный темп</span></div><div class="wk-player"><div class="wk-stage wk-illustrated ${running?'':'wk-paused'}">${videoActive?`<div class="wk-video-wrap"><div class="wk-video-viewport "><video id="wk-training-video" src="assets/${media[selected.id].file}" poster="assets/${media[selected.id].cover}" muted playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload nofullscreen noremoteplayback" tabindex="-1" preload="metadata" aria-label="Видео упражнения: ${s.name}"></video></div><p class="note" id="wk-video-help">Фрагмент текущего упражнения · В полном экране разведи два пальца, чтобы убрать поля; сведи, чтобы вернуть полный кадр.</p></div>`:art(s.art)}<span class="wk-stage-label">${s.cue}${['face','eyes','back'].includes(selected.id)?'<small>Видеопоказ · движение без усилия</small>':''}</span></div><div class="wk-coach"><span class="wk-badge">${ready?'✓ ЭТАП ЗАВЕРШЁН':'ПРАКТИКА'}</span><h2>${s.name}</h2><p>${s.instruction}</p>${['face','eyes','back'].includes(selected.id)?sourceLink(index):''}${videoActive?`<div class="wk-video-controls" role="group" aria-label="Управление видео"><button class="btn btn-ghost btn-small" data-action="video-fullscreen">⛶ На весь экран</button><button class="btn btn-ghost btn-small" data-action="video-mute" aria-pressed="${videoMuted}">${videoMuted?'Включить звук':'Выключить звук'}</button></div>`:window.NuvikoCoach.controls?window.NuvikoCoach.controls():''}<div class="wk-timer" id="wk-clock" role="timer" aria-label="Осталось времени">${clock(remaining)}</div><div class="wk-controls">${ready?`<button class="btn btn-primary" data-action="next">${index===list.length-1?'Завершить тренировку ✓':'Следующий этап →'}</button>`:`<button class="btn btn-primary" data-action="pause">${running?'Ⅱ Пауза':'▶ Продолжить'}</button>`}${!ready?`<button class="btn btn-ghost" data-action="skip">Пропустить упражнение ↠</button>`:''}</div><div class="wk-next">${list[index+1]?`Далее: ${list[index+1].name}`:'Далее: твоя первая маленькая победа ✦'}</div><button class="wk-exit" data-action="detail">Выйти и сохранить прогресс</button></div></div><div class="wk-outline">${list.map((step,i)=>`<div class="wk-step ${results[i]==='skipped'?'skipped':i<index?'done':i===index?'active':''}"><span>${results[i]==='skipped'?'↠':i<index?'✓':String(i+1).padStart(2,'0')}</span><strong>${step.name}</strong><small>${results[i]==='skipped'?'Пропущено':step.seconds+' сек'}</small></div>`).join('')}</div><div style="margin-top:22px">${tip()}</div>`;
+      html+=`<span class="wk-label">${selected.name} / УПРАЖНЕНИЕ ${index+1} ИЗ ${selected.steps.length}</span><div class="wk-progress"><span style="width:${index/list.length*100}%"></span></div><div class="wk-progress-label"><span>Этап ${index+1} из ${list.length}</span><span>Твой комфортный темп</span></div><div class="wk-player"><div class="wk-stage wk-illustrated ${running?'':'wk-paused'}">${videoActive?`<div class="wk-video-wrap"><div class="wk-video-viewport "><video id="wk-training-video" src="assets/${media[selected.id].file}" poster="assets/${media[selected.id].cover}" muted playsinline disablepictureinpicture disableremoteplayback controlslist="nodownload nofullscreen noremoteplayback" tabindex="-1" preload="metadata" aria-label="Видео упражнения: ${s.name}"></video></div><p class="note" id="wk-video-help">Фрагмент текущего упражнения · В полном экране разведи два пальца, чтобы убрать поля; сведи, чтобы вернуть полный кадр.</p></div>`:art(s.art)}<span class="wk-stage-label">${s.cue}${['face','eyes','back'].includes(selected.id)?'<small>Видеопоказ · движение без усилия</small>':''}</span></div><div class="wk-coach"><span class="wk-badge">${ready?'✓ ЭТАП ЗАВЕРШЁН':'ПРАКТИКА'}</span><h2>${s.name}</h2><p>${s.instruction}</p>${['face','eyes','back'].includes(selected.id)?sourceLink(index):''}${videoActive?`<div class="wk-video-controls" role="group" aria-label="Управление видео"><button class="btn btn-ghost btn-small" data-action="video-fullscreen">⛶ На весь экран</button><button class="btn btn-ghost btn-small" data-action="video-mute" aria-pressed="${videoMuted}">${videoMuted?'Включить звук':'Выключить звук'}</button></div>`:window.NuvikoCoach.controls?window.NuvikoCoach.controls():''}<div class="wk-timer" id="wk-clock" role="timer" aria-label="Осталось времени">${clock(remaining)}</div><div class="wk-controls">${autoControl()}${ready?`<button class="btn btn-primary" data-action="next">${index===list.length-1?'Завершить тренировку ✓':'Следующий этап →'}</button>`:`<button class="btn btn-primary" data-action="pause">${running?'Ⅱ Пауза':'▶ Продолжить'}</button>`}${!ready?`<button class="btn btn-ghost" data-action="skip">Пропустить упражнение ↠</button>`:''}</div><div class="wk-next">${list[index+1]?`Далее: ${list[index+1].name}`:'Далее: твоя первая маленькая победа ✦'}</div><button class="wk-exit" data-action="detail">Выйти и сохранить прогресс</button></div></div><div class="wk-outline">${list.map((step,i)=>`<div class="wk-step ${results[i]==='skipped'?'skipped':i<index?'done':i===index?'active':''}"><span>${results[i]==='skipped'?'↠':i<index?'✓':String(i+1).padStart(2,'0')}</span><strong>${step.name}</strong><small>${results[i]==='skipped'?'Пропущено':step.seconds+' сек'}</small></div>`).join('')}</div><div style="margin-top:22px">${tip()}</div>`;
     }else {
       const done=selected.steps.filter((_,i)=>results[i]==='done').length;
       const skipped=selected.steps.length-done;
       html+=`<div class="wk-complete"><div class="wk-medal">${skipped?'✦':'✓'}</div><span class="wk-label">ТВОЁ ВРЕМЯ ДЛЯ СЕБЯ</span><h1>${skipped?'Практика завершена':'Ты справился. Отличный ритм!'}</h1><p class="muted">«${selected.name}»<br>${skipped?'Ты выбрал свой темп. К пропущенным упражнениям можно вернуться в новом прохождении.':'Все упражнения выполнены. Можно расслабиться!'}</p><div class="wk-facts" style="justify-content:center"><div><strong>${done} / ${selected.steps.length}</strong><small>выполнено</small></div><div><strong>${skipped}</strong><small>пропущено</small></div><div><strong>${record().count||0}</strong><small>полных прохождений</small></div></div><span class="wk-badge ${skipped?'':'done'}">${skipped?'↠ ЧАСТИЧНОЕ ПРОХОЖДЕНИЕ':'✓ ПРОЙДЕНО ПОЛНОСТЬЮ'}</span><div class="wk-outline">${selected.steps.map((step,i)=>`<div class="wk-step ${results[i]==='done'?'done':'skipped'}"><span>${results[i]==='done'?'✓':'↠'}</span><strong>${step.name}</strong><small>${results[i]==='done'?'Выполнено':'Пропущено'}</small></div>`).join('')}</div><div class="wk-controls"><button class="btn btn-primary" data-action="catalog">К программам →</button><button class="btn btn-ghost" data-action="restart">Повторить</button></div>${storageFailed?'<p class="note">Хранилище недоступно: результат сохранится только до закрытия страницы.</p>':''}</div>`;
     }
+    if(screen==='player'&&autoAt)html+=`<div class="wk-transition" role="status"><span>✓ Этап выполнен</span><strong>${stages(selected)[index+1]?.name||'Тренировка завершена'}</strong><i></i></div>`;
     if(screen==='player')html+=fullscreenHUD();else if(fullscreen)exitFullscreen();
     root.innerHTML=screen==='player'?`<div class="wk-fs-surface">${html}</div>`:html;
     window.NuvikoCoach.mount(root);
@@ -137,29 +156,32 @@ exercise('Дыхание и завершение',15,'Со спокойным в
   }
   function track(){
     if(!running||!trackedAt)return;
+    const video=root.querySelector?.('#wk-training-video');if(video){sampleVideo(video);return}
     const end=Math.min(Date.now(),deadline),ms=Math.max(0,end-trackedAt);
     if(ms)report(ms);trackedAt=end;
   }
   function audio(){window.NuvikoDaily?.music(running&&screen==='player')}
-  function checkpoint(){if(screen==='player'&&selected){record().session={noRest:true,attemptId,index,remaining,results,version:selected.version||1};save()}}
-  function pause(){track();if(running){remaining=Math.max(0,Math.ceil((deadline-Date.now())/1000));running=false}audio();root.querySelector?.('video')?.pause();checkpoint()}
+  function checkpoint(){if(screen==='player'&&selected){record().session={noRest:true,attemptId,index,remaining,playedSeconds,results,version:selected.version||1};save()}}
+  function pause(){track();if(running){if(!root.querySelector?.('#wk-training-video'))remaining=Math.max(0,Math.ceil((deadline-Date.now())/1000));running=false}audio();root.querySelector?.('video')?.pause();checkpoint()}
   function start(fresh){
     const prior=!fresh&&record().session;
     let saved=prior&&(prior.version||1)===(selected.version||1)?prior:null;
     // Preserve completed exercises and resume at the next exercise when an old session was resting.
+    autoAt=0;
     if(saved&&!saved.noRest){
       const next=Math.min(selected.steps.length-1,Math.ceil(saved.index/2));
       saved={...saved,noRest:true,index:next,remaining:saved.index%2?selected.steps[next].seconds:saved.remaining,results:(saved.results||[]).filter((_,i)=>i%2===0)};
     }
     index=saved&&Number.isInteger(saved.index)&&saved.index>=0&&saved.index<stages(selected).length?saved.index:0;
     remaining=saved&&Number.isFinite(saved.remaining)?Math.min(stages(selected)[index].seconds,Math.max(0,saved.remaining)):stages(selected)[index].seconds;
+    playedSeconds=saved&&Number.isFinite(saved.playedSeconds)?Math.max(0,Math.min(stages(selected)[index].seconds,saved.playedSeconds)):stages(selected)[index].seconds-remaining;
     results=saved&&Array.isArray(saved.results)?[...saved.results]:Array.from({length:index},()=> 'done');
     attemptId=saved?.attemptId||('workout-'+Date.now()+'-'+Math.random().toString(36).slice(2));trackedAt=Date.now();
     screen='player';running=remaining>0;deadline=Date.now()+remaining*1000;record().version=selected.version||1;checkpoint();audio();window.NuvikoDaily?.sound('start');render();
   }
   function advance(skip){
     if(screen!=='player'||(!skip&&remaining>0))return;
-    track();
+    track();autoAt=0;
     results[index]=skip&&remaining>0?'skipped':'done';
     if(index===stages(selected).length-1){
       running=false;
@@ -167,10 +189,12 @@ exercise('Дыхание и завершение',15,'Со спокойным в
       record().lastAttempt={date:new Date().toISOString(),done,skipped:selected.steps.length-done};
       if(done===selected.steps.length){record().count=(record().count||0)+1;record().last=new Date().toISOString()}
       delete record().session;save();screen='complete';report(0,true);window.NuvikoDaily?.sound('finish');
-    }else{index++;remaining=stages(selected)[index].seconds;running=true;deadline=Date.now()+remaining*1000;checkpoint()}
+    }else{index++;playedSeconds=0;lastVideoTime=null;remaining=stages(selected)[index].seconds;running=true;deadline=Date.now()+remaining*1000;checkpoint()}
     trackedAt=Date.now();report();audio();render();window.scrollTo({top:0,behavior:'smooth'});
   }
   function action(name){
+    if(name==='auto-next'){autoNext=!autoNext;try{localStorage.setItem('nuviko_auto_next',autoNext?'1':'0')}catch{}autoAt=autoNext&&screen==='player'&&remaining===0?Date.now()+900:0;render();return}
+
     if(name==='video-fullscreen'){openFullscreen();return}
     if(name==='video-fullscreen-exit'){exitFullscreen();return}
     if(name==='video-mute'){
@@ -211,7 +235,16 @@ exercise('Дыхание и завершение',15,'Со спокойным в
     if(b.dataset.select){selected=programs.find(p=>p.id===b.dataset.select);screen='detail';render();window.scrollTo({top:0,behavior:'smooth'})}else if(b.dataset.action)action(b.dataset.action);
   });
   root.addEventListener('focusin',revealHUD);
-  setInterval(()=>{if(fullscreen&&mobileFullscreen()&&!hudHidden&&Date.now()>=hudHideAt)setHUDHidden(true);if(!running||screen!=='player')return;track();const next=Math.max(0,Math.ceil((deadline-Date.now())/1000));if(next!==remaining){remaining=next;if(remaining>0&&remaining<=3)window.NuvikoDaily?.sound('count');checkpoint();const el=document.getElementById('wk-clock');if(el)el.textContent=clock(remaining);const fsClock=document.getElementById('wk-fs-clock');if(fsClock)fsClock.textContent=clock(remaining);if(remaining===0){running=false;report();audio();window.NuvikoDaily?.sound('finish');render();revealHUD()}}},200);
+  setInterval(()=>{
+    if(fullscreen&&mobileFullscreen()&&!hudHidden&&Date.now()>=hudHideAt)setHUDHidden(true);
+    if(screen!=='player')return;
+    if(autoAt&&Date.now()>=autoAt){autoAt=0;if(autoNext&&remaining===0)advance(false);return}
+    if(!running)return;
+    const video=root.querySelector?.('#wk-training-video');if(video){sampleVideo(video);return}
+    track();const next=Math.max(0,Math.ceil((deadline-Date.now())/1000));
+    if(next!==remaining){remaining=next;paintClock();checkpoint();if(remaining===0)finishStage()}
+  },100);
+
   new MutationObserver(()=>{if(!document.getElementById('workouts').classList.contains('active')){if(fullscreen)exitFullscreen();if(running){pause();render()}}else if(owner!==account()){pause();owner=account();selected=null;screen='catalog';render()}}).observe(document.getElementById('workouts'),{attributes:true,attributeFilter:['class']});
   document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){pause();render()}});
   window.addEventListener('pagehide',pause);

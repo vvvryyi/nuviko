@@ -2,10 +2,11 @@ const {strict:assert}=require('node:assert');
 const vm=require('node:vm');
 const fs=require('node:fs');
 const storage=new Map([['nuviko_demo_v1',JSON.stringify({email:'test@example.invalid'})]]);
-function boot(windowOptions={},fullscreenRequest){
+function boot(windowOptions={},fullscreenRequest,videoMock){
   let now=100000, tick, click, observer; const reports=[];
   const classes=new Set(),handlers={};
   const root={classList:{add:c=>classes.add(c),remove:c=>classes.delete(c),toggle:(c,v)=>v?classes.add(c):classes.delete(c)},innerHTML:'',addEventListener:(type,fn)=>{handlers[type]=fn;if(type==='click')click=fn}};
+  if(videoMock)root.querySelector=selector=>(selector==='#wk-training-video'||selector==='video')&&root.innerHTML.includes('wk-training-video')?videoMock:null;
   if(fullscreenRequest)root.requestFullscreen=fullscreenRequest;
   const view={classList:{contains:()=>true}};
   const doc={hidden:false,getElementById:id=>id==='workout-app'?root:id==='workouts'?view:null,addEventListener(){},querySelector:()=>({click(){}})};
@@ -106,3 +107,16 @@ pinch.advance(1);pinch.touch('touchstart',[0,150]);pinch.touch('touchmove',[0,90
 pinch.touch('touchend',[]);pinch.advance(1);pinch.tap();assert.ok(!pinch.classes.has('wk-hud-hidden'));
 pinch.action('video-mute');assert.ok(!pinch.classes.has('wk-hud-hidden'));
 console.log('Passed: pinch fill/fit, no zoom button, gesture does not trigger taps, video tap toggles HUD, control taps keep HUD visible.');
+
+const events={};const video={readyState:0,duration:595,currentTime:0,seeking:false,paused:false,addEventListener:(name,fn)=>events[name]=fn,play(){this.paused=false;return Promise.resolve()},pause(){this.paused=true}};
+const synced=boot({},null,video);synced.select('face');synced.action('restart');synced.advance(100);
+assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.session.remaining,30);
+video.readyState=4;events.loadedmetadata();video.currentTime=25;synced.advance(10);
+assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.session.remaining,20);
+synced.advance(100);assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.session.remaining,20);
+video.readyState=1;synced.advance(100);assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.session.remaining,20);
+video.readyState=4;synced.action('pause');assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.session.remaining,20);synced.action('pause');video.currentTime=45;events.timeupdate();assert.ok(synced.html().includes('ЭТАП ЗАВЕРШЁН'));assert.ok(video.currentTime>44);
+synced.action('auto-next');assert.ok(synced.html().includes('wk-transition'));synced.advance(1);assert.ok(synced.html().includes('Этап 2 из 16'));
+assert.equal(video.currentTime,48);synced.advance(100);assert.ok(synced.html().includes('Этап 2 из 16'));
+video.currentTime=78;events.timeupdate();synced.action('auto-next');synced.advance(2);assert.ok(synced.html().includes('Этап 2 из 16'));
+console.log('Passed: media-based clock, loading/buffering do not advance time, no completion rewind, source-aligned auto advance, no premature transition and auto cancellation.');
