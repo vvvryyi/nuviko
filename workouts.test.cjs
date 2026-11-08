@@ -116,7 +116,12 @@ assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid
 synced.advance(100);assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.session.remaining,20);
 video.readyState=1;synced.advance(100);assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.session.remaining,20);
 video.readyState=4;synced.action('pause');assert.equal(JSON.parse(storage.get('nuviko_workouts_v1'))['test@example.invalid'].face.session.remaining,20);synced.action('pause');video.currentTime=45;events.timeupdate();assert.ok(synced.html().includes('ЭТАП ЗАВЕРШЁН'));assert.ok(video.currentTime>44);
-synced.action('auto-next');assert.ok(synced.html().includes('wk-transition'));synced.advance(1);assert.ok(synced.html().includes('Этап 2 из 16'));
+synced.action('auto-next');assert.ok(synced.html().includes('wk-transition'));synced.advance(2);assert.ok(synced.html().includes('Этап 1 из 16'));synced.advance(1);assert.ok(synced.html().includes('Этап 2 из 16'));
 assert.equal(video.currentTime,48);synced.advance(100);assert.ok(synced.html().includes('Этап 2 из 16'));
 video.currentTime=78;events.timeupdate();synced.action('auto-next');synced.advance(2);assert.ok(synced.html().includes('Этап 2 из 16'));
 console.log('Passed: media-based clock, loading/buffering do not advance time, no completion rewind, source-aligned auto advance, no premature transition and auto cancellation.');
+
+const controls=boot();controls.select('face');controls.action('restart');assert.ok(!controls.html().includes('data-action="auto-next"'));assert.ok(!controls.html().includes('youtube.com'));assert.ok(!controls.html().includes('Техника в оригинальном видео'));
+controls.advance(30);assert.ok(controls.html().includes('data-action="auto-next"'));controls.action('next');assert.ok(!controls.html().includes('data-action="auto-next"'));
+controls.action('detail');assert.ok(!controls.html().includes('youtube.com'));
+console.log('Passed: auto switch only at completion, hidden during exercises, 3-second transition and original video links removed.');
